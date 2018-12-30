@@ -6,9 +6,12 @@ import os.path
 import gzip
 import errno
 
-from torchvision.datasets.folder import is_image_file, default_loader, find_classes, \
+from torchvision.datasets.folder import default_loader, find_classes, \
     IMG_EXTENSIONS
 from torchvision.datasets.utils import download_url
+
+def is_image_file(filename):
+    return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
 
 def makedir_exist_ok(dirpath):
@@ -84,7 +87,12 @@ def make_pair(imgs, resets, k, get_img, root):
     filename = os.path.join(root, 'imgs_skipped_%d.pkl' % k)
     if os.path.exists(filename):
         with open(filename, 'rb') as f:
-            return pkl.load(f)
+            pklLoadData = pkl.load(f)
+            for listIdx in range(pklLoadData.__len__()):
+                pklLoadData[listIdx] = (
+                (pklLoadData[listIdx][0][0].replace('/home/thanard/Downloads/', './'), pklLoadData[listIdx][0][1]),
+                (pklLoadData[listIdx][1][0].replace('/home/thanard/Downloads/', './'), pklLoadData[listIdx][1][1]))
+            return pklLoadData
 
     image_pairs = []
     for i, img in enumerate(imgs):
