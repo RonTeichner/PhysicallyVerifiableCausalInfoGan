@@ -44,7 +44,9 @@ parser.add_argument("-classifier_path", type=str,
 
 # Training hyperparameters
 parser.add_argument("-seed", type=int, default=0)
-parser.add_argument("-n_epochs", type=int, default=100)
+#parser.add_argument("-n_epochs", type=int, default=100)
+#parser.add_argument("-n_epochs", type=int, default=25) # 25 seems to be enough
+parser.add_argument("-n_epochs", type=int, default=3)
 parser.add_argument("-cc", type=int, default=7,
                     dest="cont_code_dim",
                     help="continuous code dimension")
@@ -73,8 +75,12 @@ parser.add_argument("-learn_mu", action="store_true")
 parser.add_argument("-learn_var", action="store_true")
 
 # Planning
-parser.add_argument("-planning_epoch", type=int, default=[100], nargs="+",
+#parser.add_argument("-planning_epoch", type=int, default=[100], nargs="+",
+#                    help="List of epoch numbers to run planning.")
+
+parser.add_argument("-planning_epoch", type=int, default=[3], nargs="+",
                     help="List of epoch numbers to run planning.")
+
 parser.add_argument("-plan_length", type=int, default=10,
                     help="Set to 0 if doesn't run planning.")
 parser.add_argument("-traj_eval_copies", type=int, default=100,

@@ -7,6 +7,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
+import time
 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -78,9 +79,9 @@ class Trainer:
         configure(os.path.join(self.out_dir, "log"), flush_secs=5)
 
     def _noise_sample(self, z, bs):
-        c = self.P.sample(bs)
-        c_next = self.T(c)
-        z.data.normal_(0, 1)
+        c = self.P.sample(bs)   # c is totaly random
+        c_next = self.T(c)      # c_next is gaussian with mean = c and some default var. the mean and var can be learned if enabled to
+        z.data.normal_(0, 1)    # z has normal distribution
         return z, c, c_next
 
     def _eval_noise(self):
@@ -145,10 +146,10 @@ class Trainer:
 
     def train(self):
         # Set up training.
-        real_o = Variable(torch.FloatTensor(self.batch_size, 3, 64, 64).cuda(), requires_grad=False)
-        real_o_next = Variable(torch.FloatTensor(self.batch_size, 3, 64, 64).cuda(), requires_grad=False)
-        label = Variable(torch.FloatTensor(self.batch_size).cuda(), requires_grad=False)
-        z = Variable(torch.FloatTensor(self.batch_size, self.rand_z_dim).cuda(), requires_grad=False)
+        real_o =        Variable(torch.FloatTensor(self.batch_size, 3, 64, 64).cuda(),          requires_grad=False)
+        real_o_next =   Variable(torch.FloatTensor(self.batch_size, 3, 64, 64).cuda(),          requires_grad=False)
+        label =         Variable(torch.FloatTensor(self.batch_size).cuda(),                     requires_grad=False)
+        z =             Variable(torch.FloatTensor(self.batch_size, self.rand_z_dim).cuda(),    requires_grad=False)
 
         criterionD = nn.BCELoss().cuda()
 
@@ -211,6 +212,10 @@ class Trainer:
             self.Q.train()
             self.T.train()
             for num_iters, batch_data in enumerate(dataloader, 0):
+                #print('going to sleep')
+                #time.sleep(2)
+                #print('waking up')
+
                 # Real data
                 o, _ = batch_data[0]
                 o_next, _ = batch_data[1]
@@ -222,8 +227,20 @@ class Trainer:
 
                 real_o.data.copy_(o)
                 real_o_next.data.copy_(o_next)
+
+                # Plot real data:
+                if epoch % 10 == 0:
+                    save_image(real_o.data,
+                               os.path.join(self.out_dir, 'real', 'real_preFcn_samples_%d.png' % epoch),
+                               nrow=self.test_num_codes,
+                               normalize=True)
+                    save_image(real_o_next.data,
+                               os.path.join(self.out_dir, 'real', 'real_preFcn_samples_next_%d.png' % epoch),
+                               nrow=self.test_num_codes,
+                               normalize=True)
+
                 if self.fcn:
-                    real_o = self.apply_fcn_mse(o)
+                    real_o = self.apply_fcn_mse(o) # a grey scale img [-1,1]. each pixel has the probability of being a part of the object
                     real_o_next = self.apply_fcn_mse(o_next)
                     if real_o.abs().max() > 1:
                         import ipdb;
@@ -237,32 +254,34 @@ class Trainer:
                 optimD.zero_grad()
                 # Real data
                 probs_real = self.D(real_o, real_o_next)
-                label.data.fill_(1)
+                label.data.fill_(1) # label of real data is 1
                 loss_real = criterionD(probs_real, label)
-                loss_real.backward()
+                loss_real.backward() # weight gradCalc of descriminator only (realData -> Descriminator -> Loss)
 
                 # Fake data
-                z, c, c_next = self._noise_sample(z, bs)
+                z, c, c_next = self._noise_sample(z, bs) # z,c have normal distribution; c_next has a gaussian distribution with mean = c and some default variance value
                 fake_o, fake_o_next = self.G(z, c, c_next)
                 probs_fake = self.D(fake_o.detach(), fake_o_next.detach())
-                label.data.fill_(0)
+                label.data.fill_(0)  # label of fake data is 0
                 loss_fake = criterionD(probs_fake, label)
-                loss_fake.backward()
+                loss_fake.backward() # weight gradCalc of descriminator only (because of detach (randNoise -> generator -> detach -> fakeData -> Descriminator -> Loss)
 
                 D_loss = loss_real + loss_fake
 
-                optimD.step()
+                optimD.step() # weight update of D
                 ############################################
                 # G loss (Update G)
                 optimG.zero_grad()
 
                 probs_fake_2 = self.D(fake_o, fake_o_next)
-                label.data.fill_(1)
+                label.data.fill_(1) # the generator should make the discriminator output an 1 (i.e real)
                 G_loss = criterionD(probs_fake_2, label)
 
                 # Q loss (Update G, T, Q)
-                ent_loss = -self.P.log_prob(c).mean(0)
+                ent_loss = -self.P.log_prob(c).mean(0) # always equals log(2), only size(c) is used
                 crossent_loss = -self.Q.log_prob(fake_o, c).mean(0)
+                # fake_o is forward through an NN Q that outputs (mu,var). creates a probability function into which c is placed.
+                # then we have the probability of each c given it's o_fake. we take a mean.
                 crossent_loss_next = -self.Q.log_prob(fake_o_next, c_next).mean(0)
                 # trans_prob = self.T.get_prob(Variable(torch.eye(self.dis_c_dim).cuda()))
                 ent_loss_next = -self.T.log_prob(c, None, c_next).mean(0)
@@ -285,6 +304,12 @@ class Trainer:
                 #############################################
                 # Logging (iteration)
                 if num_iters % 100 == 0:
+                    os.system('nvidia-settings -q gpucoretemp')
+                    #print('going to sleep')
+                    #time.sleep(20)
+                    os.system('nvidia-settings -q gpucoretemp')
+                    #print('waking up')
+
                     self.log_dict['Dloss'] = D_loss.data[0]
                     self.log_dict['Gloss'] = G_loss.data[0]
                     self.log_dict['Qloss'] = Q_loss.data[0]
