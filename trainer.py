@@ -541,8 +541,14 @@ class Trainer:
             #            nrow=keep_best,
             #            normalize=True)
 
-            pd = torch.max(rollout_data, from_numpy_to_var(masks)).t().contiguous().view(-1, self.channel_dim,
-                                                                                         64, 64)
+
+            #original code that dose not work because .t() expects a 2D tensor:
+            #pd = torch.max(rollout_data, from_numpy_to_var(masks)).t().contiguous().view(-1, self.channel_dim,
+            #                                                                             64, 64)
+
+            #replacement code:
+            pd = torch.max(rollout_data, from_numpy_to_var(masks)).contiguous().view(-1, self.channel_dim, 64, 64)
+
             # confidences.T has size keep_best x rollout length
             all_confidences.append(confidences.T[-1][:-1])
 
@@ -551,6 +557,8 @@ class Trainer:
                                     % (self.planner.__name__, metric, i, epoch)),
                        nrow=int(pd.size()[0] / keep_best),
                        normalize=True)
+            if i==2:
+                break
         all_confidences = np.stack(all_confidences)
         print((all_confidences[:, 0] > 0.9).sum(), (all_confidences[:, -1] > 0.9).sum())
         import pickle as pkl
